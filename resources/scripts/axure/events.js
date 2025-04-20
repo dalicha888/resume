@@ -593,14 +593,23 @@ $axure.internal(function ($ax) {
     };
 
     var _attachDefaultObjectEvent = function(elementIdQuery, elementId, eventName, fn) {
-        var func = function() {
-            if(!$ax.style.IsWidgetDisabled(elementId)) return fn.apply(this, arguments);
-            return true;
+        var func = function(e) {
+            if($ax.style.IsWidgetDisabled(elementId) || _shouldIgnoreLabelClickFromCheckboxOrRadioButton(e)) return true;
+            return fn.apply(this, arguments);
         };
 
         var bind = !elementIdQuery[eventName];
         if(bind) elementIdQuery.bind(eventName, func);
         else elementIdQuery[eventName](func);
+    };
+
+    var _shouldIgnoreLabelClickFromCheckboxOrRadioButton = function (e) {
+        return (((_hasParentWithMatchingSelector(e.target, '.checkbox') && $(e.target).closest('label').length != 0) ||
+            _hasParentWithMatchingSelector(e.target, '.radio_button') && $(e.target).closest('label').length != 0)) && e.type == 'click';
+    };
+
+    var _hasParentWithMatchingSelector = function (target, selector) {
+        return $(target).parents(selector).length != 0;
     };
 
     var _attachCustomObjectEvent = function(elementId, eventName, fn) {
@@ -787,13 +796,25 @@ $axure.internal(function ($ax) {
             //        $jobj($ax.INPUT(elementId)).css('color', 'grayText');
             //    }
             //};
+            const isInput = $ax.public.fn.IsTextArea(dObj.type) || $ax.public.fn.IsTextBox(dObj.type);
+            if(isInput) {
+                var inputJobj = $jobj($ax.INPUT(elementId));
+                inputJobj.bind('keyup', function(e) {
+                    //prevents triggering player shortcuts
+                    e.preventDefault();
+                });
+            }
+
+            const isDateTimeTypeInput = function($input) {
+                const type = $input.attr('type');
+                return type == 'date' || type == 'month' || type == 'time';
+            }
 
             // Initialize Placeholders. Right now this is text boxes and text areas.
             // Also, the assuption is being made that these widgets with the placeholder, have no other styles (this may change...)
             var hasPlaceholder = dObj.placeholderText == '' ? true : Boolean(dObj.placeholderText);
-            if(($ax.public.fn.IsTextArea(dObj.type) || $ax.public.fn.IsTextBox(dObj.type)) && hasPlaceholder) {
+            if(isInput && hasPlaceholder) {
                 // This is needed to initialize the placeholder state
-                var inputJobj = $jobj($ax.INPUT(elementId));
                 inputJobj.bind('focus', function () {
                     if(dObj.HideHintOnFocused) {
                         var id = this.id;
@@ -817,8 +838,6 @@ $axure.internal(function ($ax) {
                     $ax.placeholderManager.updatePlaceholder(inputId, true);
                 });
 
-                if(ANDROID) {
-                    //input fires before keyup, to avoid flicker, supported in ie9 and above
                     inputJobj.bind('input', function() {
                         if(!dObj.HideHintOnFocused) { //hide on type
                             var id = this.id;
@@ -826,15 +845,22 @@ $axure.internal(function ($ax) {
                             if(inputIndex == -1) return;
                             var inputId = id.substring(0, inputIndex);
 
-                            if($ax.placeholderManager.isActive(inputId)) {
-                                $ax.placeholderManager.updatePlaceholder(inputId, false, true);
-                            } else if(!$jobj(id).val()) {
-                                $ax.placeholderManager.updatePlaceholder(inputId, true, false);
-                                $ax.placeholderManager.moveCaret(id, 0);
-                            }
+                        var $input = $jobj(id);
+                        var emptyInputValue = !$input.val();
+
+                        var invalidDateTimeInput = isDateTimeTypeInput($input) && !$input[0].validity.valid;
+                        if ($ax.placeholderManager.isActive(inputId)) {
+                            // clear text if emptyInputValue is true;
+                            $ax.placeholderManager.updatePlaceholder(inputId, false, emptyInputValue);
                         }
-                    });
-                } else {
+                        else if (emptyInputValue && !invalidDateTimeInput) {
+                            $ax.placeholderManager.updatePlaceholder(inputId, true);
+                            $ax.placeholderManager.moveCaret(id, 0);
+                        }
+                }
+                });
+
+                if(!ANDROID) {
                     inputJobj.bind('keydown', function() {
                         if(!dObj.HideHintOnFocused) {
                             var id = this.id;
@@ -845,20 +871,6 @@ $axure.internal(function ($ax) {
                             if(!$ax.placeholderManager.isActive(inputId)) return;
                             $ax.placeholderManager.updatePlaceholder(inputId, false, true);
                         }
-                    }).bind('keyup', function(e) {
-                        var id = this.id;
-                        var inputIndex = id.indexOf('_input');
-                        if(inputIndex == -1) return;
-                        var inputId = id.substring(0, inputIndex);
-
-                        if($ax.placeholderManager.isActive(inputId)) return;
-                        if(!dObj.HideHintOnFocused && !$jobj(id).val()) {
-                            $ax.placeholderManager.updatePlaceholder(inputId, true);
-                            $ax.placeholderManager.moveCaret(id, 0);
-                        }
-
-                        //prevents triggering player shortcuts
-                        e.preventDefault();
                     });
                 }
 
@@ -1149,7 +1161,7 @@ $axure.internal(function ($ax) {
                     if(input.prop('selected')) {
                         $ax.updateRadioButtonSelected(radioGroupName, elementId);
                     }
-                    var onClick = function() {
+                    var onClick = function(e) {
                         if(radioGroupName !== elementId) {
                             var radioGroup = $("input[name='" + radioGroupName + "']").parent();
                             for(var i = 0; i < radioGroup.length; i++) {
@@ -1157,10 +1169,12 @@ $axure.internal(function ($ax) {
                             }
                         }
                         $ax.style.SetWidgetSelected(elementId, true, true);
+                        if(!$ax.style.IsWidgetDisabled(elementId)) e.originalEvent.handled = true;
                     };
                 } else {
-                    onClick = function () {
+                    onClick = function(e) {
                         $ax.style.SetWidgetSelected(elementId, !$ax.style.IsWidgetSelected(elementId), true);
+                        if(!$ax.style.IsWidgetDisabled(elementId)) e.originalEvent.handled = true;
                     };                                        
                 }
                 input.click(onClick);
@@ -1558,7 +1572,8 @@ $axure.internal(function ($ax) {
         if(!e) return;
 
         if(IE_10_AND_BELOW && typeof (e.type) == 'unknown') return;
-        if(e.type != 'mousemove' && e.type != 'touchstart' && e.type != 'touchmove' && e.type != 'touchend') return;
+        if(e.type != 'mousemove' && e.type != 'touchstart' && e.type != 'touchmove' && e.type != 'touchend'
+            && e.type != 'pointermove' && e.type != 'pointerdown' && e.type != 'pointerup') return;
 
         var newX;
         var newY;
@@ -1607,17 +1622,23 @@ $axure.internal(function ($ax) {
     };
     $ax.event.raiseSelectedEvents = _raiseSelectedEvents;
 
-    var _raiseSyntheticEvent = function(elementId, eventName, skipShowDescription, eventInfo, nonSynthetic) {
+    var _raiseSyntheticEvent = function (elementId, eventName, skipShowDescription, eventInfo, nonSynthetic) {
+        if ($ax.style.IsWidgetDisabled(elementId) && _shouldStopOnDisabledWidget(eventName)) return;
         // Empty string used when this is an event directly on the page.
         var dObj = elementId === '' ? $ax.pageData.page : $ax.getObjectFromElementId(elementId);
         var axEventObject = dObj && dObj.interactionMap && dObj.interactionMap[eventName];
-        if(!axEventObject) return;
+        if (!axEventObject) return;
 
         eventInfo = eventInfo || $ax.getEventInfoFromEvent($ax.getjBrowserEvent(), skipShowDescription, elementId);
         //        $ax.recording.maybeRecordEvent(elementId, eventInfo, axEventObject, new Date().getTime());
         _handleEvent(elementId, eventInfo, axEventObject, false, !nonSynthetic);
     };
     $ax.event.raiseSyntheticEvent = _raiseSyntheticEvent;
+
+    var _shouldStopOnDisabledWidget = function (eventName) {
+        var blackList = ["onLongClick"];
+        return blackList.some(x => x === eventName);
+    }
 
     var _hasSyntheticEvent = function(scriptId, eventName) {
         var dObj = $ax.getObjectFromScriptId(scriptId);
@@ -1935,10 +1956,10 @@ $axure.internal(function ($ax) {
             PAGE_AXURE_TO_JQUERY_EVENT_NAMES.onMouseMove = ['html', 'mousemove'];
         } else {
             _event.initMobileEvents($win, $win, '');
-
-            $win.bind($ax.features.eventNames.mouseDownName, _updateMouseLocation);
-            $win.bind($ax.features.eventNames.mouseUpName, function(e) { _updateMouseLocation(e, true); });
         }
+
+        $win.bind($ax.features.eventNames.mouseDownName, _updateMouseLocation);
+        $win.bind($ax.features.eventNames.mouseUpName, function(e) { _updateMouseLocation(e, true); });
         
         $win.scroll(function () { _setCanClick(false); });
         $win.bind($ax.features.eventNames.mouseDownName, function () { _setCanClick(true); });
@@ -1959,6 +1980,7 @@ $axure.internal(function ($ax) {
 
                 $(jObj)[actionName](function (e) {
                     $ax.setjBrowserEvent(e);
+                    if(_shouldIgnoreLabelClickFromCheckboxOrRadioButton(e)) return;
                     return fireEventThroughContainers(axureName, undefined, false, [$ax.constants.PAGE_TYPE, $ax.constants.REFERENCE_DIAGRAM_OBJECT_TYPE, $ax.constants.DYNAMIC_PANEL_TYPE, $ax.constants.REPEATER],
                         [$ax.constants.PAGE_TYPE, $ax.constants.REFERENCE_DIAGRAM_OBJECT_TYPE]);
                 });

@@ -64,6 +64,13 @@
 ._文本段落 {
   text-align:left;
 }
+._文本链接 {
+  color:#0000FF;
+}
+.text_link_mouse_over {
+}
+.text_link_mouse_down {
+}
 .line {
 }
 ._表单提示 {
@@ -127,7 +134,7 @@
 .shape1 {
 }
 .label {
-  font-family:'微软雅黑', sans-serif;
+  font-family:'MicrosoftYaHei', '微软雅黑', sans-serif;
   font-weight:400;
   font-style:normal;
   font-size:14px;
@@ -162,7 +169,7 @@
   text-align:left;
 }
 .box_11 {
-  font-family:'微软雅黑', sans-serif;
+  font-family:'MicrosoftYaHei', '微软雅黑', sans-serif;
   font-weight:400;
   font-style:normal;
   color:#FFFFFF;
@@ -177,5 +184,23 @@
 .form_disabled1 {
 }
 .button {
+}
+.text_field1 {
+  color:#000000;
+  text-align:left;
+}
+.form_hint1 {
+  color:#999999;
+}
+.form_disabled2 {
+}
+.icon2 {
+}
+.icon3 {
+}
+._图片_1 {
+  color:#000000;
+}
+.box_21 {
 }
 textarea, select, input, button { outline: none; }
